@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Calendar from '@/components/Calendar';
 import DayDetail from '@/components/DayDetail';
 import MapSearch from '@/components/MapSearch';
@@ -27,11 +28,19 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'reminder', label: '提醒設定', icon: '🔔' },
 ];
 
-export default function Home() {
+function HomeContent() {
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [selectedLunar, setSelectedLunar] = useState<DayLunarInfo | undefined>();
   const [activeTab, setActiveTab] = useState<Tab>('calendar');
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as Tab | null;
+    if (tab && ['calendar', 'map', 'reminder'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const handleDaySelect = (date: Date, lunarInfo?: DayLunarInfo) => {
     setSelectedDate(date);
@@ -129,5 +138,13 @@ export default function Home() {
         吃素迎吉祥・感恩神明護佑 🙏
       </footer>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-green-600">載入中...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
