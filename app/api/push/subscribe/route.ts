@@ -1,30 +1,64 @@
-// Web Push: store push subscriptions (in-memory for demo; use DB in production)
+// Web Push: store push subscriptions in Vercel KV (persistent across deploys)
 import { NextRequest, NextResponse } from 'next/server';
 
-// In production, persist subscriptions to a database
-// For this demo, store in module-level variable (resets on server restart)
-const subscriptions: Set<string> = new Set();
+// Use Vercel KV in production, fallback to in-memory for local dev
+let memStore: Set<string> = new Set();
+
+async function getKV() {
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    const { kv } = await import('@vercel/kv');
+    return kv;
+  }
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   const subscription = await req.json();
   if (!subscription?.endpoint) {
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
   }
-  subscriptions.add(JSON.stringify(subscription));
+
+  const key = `push:${Buffer.from(subscription.endpoint).toString('base64').slice(0, 40)}`;
+  const kv = await getKV();
+
+  if (kv) {
+    await kv.set(key, JSON.stringify(subscription));
+    // Track all keys in a set
+    await kv.sadd('push:all_keys', key);
+  } else {
+    memStore.add(JSON.stringify(subscription));
+  }
+
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest) {
   const { endpoint } = await req.json();
-  for (const s of subscriptions) {
-    if (JSON.parse(s).endpoint === endpoint) {
-      subscriptions.delete(s);
-      break;
+  const key = `push:${Buffer.from(endpoint).toString('base64').slice(0, 40)}`;
+  const kv = await getKV();
+
+  if (kv) {
+    await kv.del(key);
+    await kv.srem('push:all_keys', key);
+  } else {
+    for (const s of memStore) {
+      if (JSON.parse(s).endpoint === endpoint) {
+        memStore.delete(s);
+        break;
+      }
     }
   }
+
   return NextResponse.json({ ok: true });
 }
 
-export function getSubscriptions() {
-  return Array.from(subscriptions).map((s) => JSON.parse(s));
+export async function getAllSubscriptions(): Promise<object[]> {
+  const kv = await getKV();
+  if (kv) {
+    const keys = await kv.smembers('push:all_keys') as string[];
+    if (!keys.length) return [];
+    const values = await Promise.all(keys.map(k => kv.get<string>(k)));
+    return values.filter(Boolean).map(v => JSON.parse(v as string));
+  }
+  return Array.from(memStore).map(s => JSON.parse(s));
 }
