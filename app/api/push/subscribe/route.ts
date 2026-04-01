@@ -1,8 +1,7 @@
-// Web Push: store push subscriptions in Vercel KV (persistent across deploys)
+// Web Push 訂閱管理：儲存到 Vercel KV（持久保存）
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use Vercel KV in production, fallback to in-memory for local dev
-let memStore: Set<string> = new Set();
+let memStore: Map<string, object> = new Map();
 
 async function getKV() {
   if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
@@ -12,21 +11,24 @@ async function getKV() {
   return null;
 }
 
+function subKey(endpoint: string) {
+  return `push:${Buffer.from(endpoint).toString('base64').slice(0, 40)}`;
+}
+
 export async function POST(req: NextRequest) {
   const subscription = await req.json();
   if (!subscription?.endpoint) {
-    return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
+    return NextResponse.json({ error: '無效的訂閱資料' }, { status: 400 });
   }
 
-  const key = `push:${Buffer.from(subscription.endpoint).toString('base64').slice(0, 40)}`;
+  const key = subKey(subscription.endpoint);
   const kv = await getKV();
 
   if (kv) {
     await kv.set(key, JSON.stringify(subscription));
-    // Track all keys in a set
     await kv.sadd('push:all_keys', key);
   } else {
-    memStore.add(JSON.stringify(subscription));
+    memStore.set(key, subscription);
   }
 
   return NextResponse.json({ ok: true });
@@ -34,19 +36,14 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const { endpoint } = await req.json();
-  const key = `push:${Buffer.from(endpoint).toString('base64').slice(0, 40)}`;
+  const key = subKey(endpoint);
   const kv = await getKV();
 
   if (kv) {
     await kv.del(key);
     await kv.srem('push:all_keys', key);
   } else {
-    for (const s of memStore) {
-      if (JSON.parse(s).endpoint === endpoint) {
-        memStore.delete(s);
-        break;
-      }
-    }
+    memStore.delete(key);
   }
 
   return NextResponse.json({ ok: true });
@@ -60,5 +57,5 @@ export async function getAllSubscriptions(): Promise<object[]> {
     const values = await Promise.all(keys.map(k => kv.get<string>(k)));
     return values.filter(Boolean).map(v => JSON.parse(v as string));
   }
-  return Array.from(memStore).map(s => JSON.parse(s));
+  return Array.from(memStore.values());
 }

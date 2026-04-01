@@ -39,7 +39,9 @@ export default function MapSearch() {
   const [error, setError] = useState<string>('');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [radius, setRadius] = useState(1000); // meters
+  const [radius, setRadius] = useState(1000);
+  const [addressInput, setAddressInput] = useState('');
+  const [locateMode, setLocateMode] = useState<'gps' | 'address'>('gps');
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -188,7 +190,6 @@ export default function MapSearch() {
       setError('瀏覽器不支援定位功能');
       return;
     }
-
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -205,6 +206,25 @@ export default function MapSearch() {
       { timeout: 10000, enableHighAccuracy: true }
     );
   }, [mapLoaded, initMap]);
+
+  const geocodeAddress = useCallback(() => {
+    if (!addressInput.trim()) { setError('請輸入地址'); return; }
+    if (!window.google?.maps) { setError('地圖尚未載入，請稍後再試'); return; }
+    setLoading(true);
+    setError('');
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address: addressInput }, (results, status) => {
+      setLoading(false);
+      if (status === 'OK' && results?.[0]) {
+        const loc = results[0].geometry.location;
+        const coords = { lat: loc.lat(), lng: loc.lng() };
+        setUserPos(coords);
+        initMap(coords);
+      } else {
+        setError('找不到此地址，請嘗試更詳細的地址（例如：台北市信義區信義路五段7號）');
+      }
+    });
+  }, [addressInput, initMap]);
 
   useEffect(() => {
     loadGoogleMaps();
@@ -235,8 +255,8 @@ export default function MapSearch() {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      {/* Controls */}
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
+      {/* 搜尋類型 + 範圍 */}
+      <div className="flex flex-wrap gap-2 mb-3 items-center">
         <div className="flex rounded-lg overflow-hidden border border-green-300">
           {(Object.keys(SEARCH_CONFIGS) as SearchType[]).map(type => (
             <button
@@ -244,16 +264,13 @@ export default function MapSearch() {
               onClick={() => setSearchType(type)}
               className={[
                 'px-4 py-2 text-sm font-medium transition-colors',
-                searchType === type
-                  ? 'bg-green-600 text-white'
-                  : 'bg-white text-green-700 hover:bg-green-50',
+                searchType === type ? 'bg-green-600 text-white' : 'bg-white text-green-700 hover:bg-green-50',
               ].join(' ')}
             >
               {SEARCH_CONFIGS[type].icon} {SEARCH_CONFIGS[type].label}
             </button>
           ))}
         </div>
-
         <select
           value={radius}
           onChange={e => setRadius(Number(e.target.value))}
@@ -264,15 +281,56 @@ export default function MapSearch() {
           <option value={2000}>2 公里內</option>
           <option value={5000}>5 公里內</option>
         </select>
+      </div>
 
+      {/* 定位方式切換 */}
+      <div className="flex rounded-lg overflow-hidden border border-gray-200 mb-3">
+        <button
+          onClick={() => setLocateMode('gps')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${locateMode === 'gps' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+        >
+          📍 使用目前位置
+        </button>
+        <button
+          onClick={() => setLocateMode('address')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${locateMode === 'address' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+        >
+          🔍 輸入地址搜尋
+        </button>
+      </div>
+
+      {/* GPS 模式 */}
+      {locateMode === 'gps' && (
         <button
           onClick={() => userPos ? (mapInstance.current ? searchNearby(userPos, mapInstance.current) : initMap(userPos)) : locate()}
           disabled={loading}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+          className="w-full mb-3 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? '搜尋中...' : userPos ? '重新搜尋' : '取得位置並搜尋'}
+          {loading ? '定位中...' : userPos ? '🔄 重新搜尋附近' : '📍 取得目前位置並搜尋'}
         </button>
-      </div>
+      )}
+
+      {/* 地址輸入模式 */}
+      {locateMode === 'address' && (
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            value={addressInput}
+            onChange={e => setAddressInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && geocodeAddress()}
+            placeholder="輸入地址，例如：台北市信義區信義路五段7號"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400"
+          />
+          <button
+            onClick={geocodeAddress}
+            disabled={loading}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {loading ? '搜尋中...' : '搜尋'}
+          </button>
+        </div>
+      )}
+
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">

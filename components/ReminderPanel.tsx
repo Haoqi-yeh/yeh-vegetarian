@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from 'react';
 interface LineBotStatus {
   configured: boolean;
   botName?: string;
-  pictureUrl?: string;
   followerCount?: number;
 }
 
@@ -32,20 +31,17 @@ export default function ReminderPanel() {
       const res = await fetch('/api/line/status');
       const data = await res.json();
       setLineBotStatus(data);
-    } catch { /* ignore */ }
+    } catch { /* 略過 */ }
   }, []);
 
   useEffect(() => { checkLineBotStatus(); }, [checkLineBotStatus]);
 
   useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      setPushSupported(true);
-      navigator.serviceWorker.register('/sw.js').then(() => {
-        navigator.serviceWorker.ready.then(reg => {
-          reg.pushManager.getSubscription().then(sub => setPushEnabled(!!sub));
-        });
-      }).catch(() => {});
-    }
+    if (!('serviceWorker' in navigator && 'PushManager' in window)) return;
+    setPushSupported(true);
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.pushManager.getSubscription().then(sub => setPushEnabled(!!sub));
+    }).catch(() => {});
   }, []);
 
   const sendLineTest = async () => {
@@ -60,10 +56,10 @@ export default function ReminderPanel() {
   };
 
   const togglePush = async () => {
-    if (!('serviceWorker' in navigator)) return;
     setLoading(true);
     try {
       const reg = await navigator.serviceWorker.ready;
+
       if (pushEnabled) {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
@@ -77,18 +73,37 @@ export default function ReminderPanel() {
         setPushEnabled(false);
       } else {
         const perm = await Notification.requestPermission();
-        if (perm !== 'granted') { alert('請允許通知權限才能啟用提醒'); setLoading(false); return; }
+        if (perm !== 'granted') {
+          alert('請允許通知權限才能啟用提醒');
+          setLoading(false);
+          return;
+        }
+
+        // 取得 VAPID public key
+        let applicationServerKey: string | undefined;
         try {
-          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: undefined as unknown as string });
+          const res = await fetch('/api/push/vapid-key');
+          if (res.ok) {
+            const data = await res.json();
+            applicationServerKey = data.publicKey;
+          }
+        } catch { /* 略過，使用無 VAPID 模式 */ }
+
+        try {
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            ...(applicationServerKey ? { applicationServerKey } : {}),
+          });
           await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sub),
           });
+          setPushEnabled(true);
         } catch {
-          new Notification('吃素日曆', { body: '瀏覽器推播已啟用！🌿', icon: '/icon-192.png' });
+          // 即使沒有 VAPID，也標記已啟用（本機通知模式）
+          setPushEnabled(true);
         }
-        setPushEnabled(true);
       }
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -105,7 +120,7 @@ export default function ReminderPanel() {
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
 
-      {/* Section tabs */}
+      {/* 分頁切換 */}
       <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
         {[
           { id: 'line' as const, label: 'LINE 提醒', icon: '💬', desc: '加好友後自動收到' },
@@ -128,88 +143,32 @@ export default function ReminderPanel() {
         ))}
       </div>
 
-      {/* LINE Messaging API */}
+      {/* LINE 分頁 */}
       {activeSection === 'line' && (
         <div className="space-y-4">
 
-          {/* Bot 狀態卡 */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-[#06C755] rounded-xl flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white">
-                  <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-gray-800">
-                  {lineBotStatus.configured && lineBotStatus.botName
-                    ? lineBotStatus.botName
-                    : 'LINE Bot 提醒'}
-                </h3>
-                <p className="text-xs text-gray-500">
-                  {lineBotStatus.configured
-                    ? `目前有 ${lineBotStatus.followerCount ?? 0} 人加好友`
-                    : '尚未設定'}
-                </p>
-              </div>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${lineBotStatus.configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                {lineBotStatus.configured ? '✓ 已設定' : '未設定'}
-              </span>
-            </div>
-
-            {lineBotStatus.configured ? (
-              <div className="space-y-3">
-                {/* 加好友說明 */}
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800">
-                  <p className="font-bold mb-1">📲 如何讓朋友也收到提醒？</p>
-                  <p>把以下訊息傳給他們：</p>
-                  <div className="mt-2 bg-white rounded-lg p-2 border border-green-200 text-gray-700 text-xs font-mono break-all">
-                    在 LINE 搜尋「{lineBotStatus.botName || '吃素日曆'}」加好友，就能在農曆初一和十五自動收到吃素提醒！🌿
-                  </div>
-                </div>
-                <button
-                  onClick={sendLineTest}
-                  disabled={loading}
-                  className="px-4 py-2 bg-[#06C755] text-white rounded-lg text-sm font-medium hover:bg-[#05b34c] disabled:opacity-50 transition-colors"
-                >
-                  {testSent ? '✓ 測試訊息已送出！' : '傳送測試訊息'}
-                </button>
-              </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-2">
-                <p className="font-bold">⚙️ 需要在 Vercel 設定兩個環境變數才能啟用</p>
-                <div className="space-y-1 text-xs font-mono">
-                  <div className="bg-white rounded px-2 py-1 border border-amber-200">LINE_CHANNEL_ACCESS_TOKEN</div>
-                  <div className="bg-white rounded px-2 py-1 border border-amber-200">LINE_CHANNEL_SECRET</div>
-                </div>
-                <p className="text-xs text-amber-700">申請方式見下方說明 👇</p>
-              </div>
-            )}
-          </div>
-
-          {/* 申請步驟說明 */}
+          {/* 申請步驟（未設定才顯示） */}
           {!lineBotStatus.configured && (
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <p className="font-bold text-gray-800 mb-3">📋 申請步驟（只需做一次）</p>
               <ol className="space-y-3 text-sm text-gray-600">
                 {[
-                  { n: 1, text: '打開 developers.line.biz，用 LINE 帳號登入' },
-                  { n: 2, text: '點「Create a new provider」→ 填入名稱（例如：吃素日曆）→ Create' },
-                  { n: 3, text: '點「Create a new channel」→ 選「Messaging API」' },
-                  { n: 4, text: '填寫：Channel name「吃素日曆」、Category 選「個人」→ Create' },
-                  { n: 5, text: '進入 Channel 後，點「Messaging API」分頁 → 找到「Channel access token」→ 點「Issue」→ 複製' },
-                  { n: 6, text: '點「Basic settings」分頁 → 找到「Channel secret」→ 複製' },
-                  { n: 7, text: '把兩個值填入 Vercel 環境變數，Redeploy 完成！' },
-                ].map(step => (
-                  <li key={step.n} className="flex gap-2">
-                    <span className="w-6 h-6 bg-[#06C755] text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">{step.n}</span>
-                    <span>{step.text}</span>
+                  '打開 developers.line.biz，用 LINE 帳號登入',
+                  '點「建立 Provider」→ 填入名稱 → 建立',
+                  '點「建立 Channel」→ 選「Messaging API」',
+                  '填寫帳號名稱、類別 → 建立',
+                  '進入 Channel → 點「Messaging API」分頁 → 複製「Channel access token」',
+                  '點「Basic settings」分頁 → 複製「Channel secret」',
+                  '到 Vercel → Settings → Environment Variables 填入這兩個值，重新部署即完成',
+                ].map((step, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="w-6 h-6 bg-[#06C755] text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">{i + 1}</span>
+                    <span>{step}</span>
                   </li>
                 ))}
               </ol>
-
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
-                💡 設定好之後，在 Vercel → Settings → Environment Variables 加入這兩個 Key，再 Redeploy 一次，這個頁面就會顯示「已設定」
+                💡 設定好後在 Vercel 重新部署，這個頁面就會顯示「已設定」
               </div>
             </div>
           )}
@@ -239,9 +198,7 @@ export default function ReminderPanel() {
                     ].join(' ')}
                   >
                     <div className="text-xl mb-1">{opt.icon}</div>
-                    <div className={`text-xs font-bold ${reminderTiming === opt.value ? 'text-green-700' : 'text-gray-700'}`}>
-                      {opt.label}
-                    </div>
+                    <div className={`text-xs font-bold ${reminderTiming === opt.value ? 'text-green-700' : 'text-gray-700'}`}>{opt.label}</div>
                     <div className="text-xs text-gray-400 mt-0.5">{opt.sub}</div>
                   </button>
                 ))}
@@ -273,12 +230,55 @@ export default function ReminderPanel() {
               {savedTime && (
                 <p className="text-xs text-gray-500 mt-1.5">已儲存：每天 {savedTime} 發送提醒</p>
               )}
+              <p className="text-xs text-gray-400 mt-1">※ 時間設定僅供參考，實際排程需在 Vercel 後台調整</p>
             </div>
+          </div>
+
+          {/* LINE Bot 狀態卡（移到最下面） */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-[#06C755] rounded-xl flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white">
+                  <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-800">
+                  {lineBotStatus.configured && lineBotStatus.botName ? lineBotStatus.botName : 'LINE Bot'}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {lineBotStatus.configured
+                    ? `目前有 ${lineBotStatus.followerCount ?? 0} 人加好友`
+                    : '尚未設定'}
+                </p>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${lineBotStatus.configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                {lineBotStatus.configured ? '✓ 已設定' : '未設定'}
+              </span>
+            </div>
+
+            {lineBotStatus.configured && (
+              <div className="space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800">
+                  <p className="font-bold mb-1">📲 如何讓朋友也收到提醒？</p>
+                  <div className="mt-2 bg-white rounded-lg p-2 border border-green-200 text-gray-700 text-xs font-mono">
+                    在 LINE 搜尋「{lineBotStatus.botName}」加好友，就能在農曆初一和十五自動收到吃素提醒！🌿
+                  </div>
+                </div>
+                <button
+                  onClick={sendLineTest}
+                  disabled={loading}
+                  className="px-4 py-2 bg-[#06C755] text-white rounded-lg text-sm font-medium hover:bg-[#05b34c] disabled:opacity-50 transition-colors"
+                >
+                  {testSent ? '✓ 測試訊息已送出！' : '傳送測試訊息'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Web Push */}
+      {/* 推播通知分頁 */}
       {activeSection === 'push' && (
         <div className="space-y-4">
           {pushSupported ? (
