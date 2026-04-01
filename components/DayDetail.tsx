@@ -47,12 +47,47 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
     try {
       const m = date.getMonth() + 1;
       const d = date.getDate();
-      const res = await fetch(`/api/history?month=${m}&day=${d}&index=${idx}`);
-      const data = await res.json();
-      if (data.error) { setHistoryError(data.error); return; }
-      if (!data.event && data.total === 0) { setHistoryError('這一天暫無歷史資料'); return; }
-      setHistory(data);
-      setHistoryIndex(data.index);
+
+      // 直接從瀏覽器呼叫維基百科（伺服器端會被 403，瀏覽器 CORS 允許）
+      // 先試繁體中文，失敗則改英文
+      let events: Array<{ year: number; text: string; pages?: Array<{ thumbnail?: { source: string }; content_urls?: { mobile?: { page: string } } }> }> = [];
+
+      try {
+        const zhRes = await fetch(
+          `https://zh.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`,
+          { headers: { 'Accept': 'application/json' } }
+        );
+        if (zhRes.ok) {
+          const zhData = await zhRes.json();
+          events = zhData.events || [];
+        }
+      } catch { /* 改用英文 */ }
+
+      if (!events.length) {
+        const enRes = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`,
+          { headers: { 'Accept': 'application/json' } }
+        );
+        if (!enRes.ok) throw new Error('Wikipedia 無法連線');
+        const enData = await enRes.json();
+        events = enData.events || [];
+      }
+
+      if (!events.length) { setHistoryError('這一天暫無歷史資料'); return; }
+
+      const safeIdx = ((idx % events.length) + events.length) % events.length;
+      const event = events[safeIdx];
+
+      let imageUrl: string | null = null;
+      let wikiUrl: string | null = null;
+      for (const page of event.pages ?? []) {
+        if (!imageUrl && page.thumbnail?.source) imageUrl = page.thumbnail.source;
+        if (!wikiUrl && page.content_urls?.mobile?.page) wikiUrl = page.content_urls.mobile.page;
+        if (imageUrl && wikiUrl) break;
+      }
+
+      setHistory({ year: event.year, text: event.text, imageUrl, wikiUrl, total: events.length, index: safeIdx });
+      setHistoryIndex(safeIdx);
     } catch {
       setHistoryError('無法取得資料，請稍後再試');
     } finally {
