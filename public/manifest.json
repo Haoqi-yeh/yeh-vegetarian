@@ -1,0 +1,16 @@
+{
+  "name": "吃素日曆",
+  "short_name": "素日曆",
+  "description": "農曆初一、十五吃素提醒日曆",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7fdf7",
+  "theme_color": "#15803d",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
