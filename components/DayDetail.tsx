@@ -1,6 +1,8 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { getDayName } from '@/lib/lunar';
+import Image from 'next/image';
 
 interface DayLunarInfo {
   date: string;
@@ -15,6 +17,15 @@ interface DayLunarInfo {
   jieQi: string;
 }
 
+interface HistoryEvent {
+  year: number;
+  text: string;
+  imageUrl: string | null;
+  wikiUrl: string | null;
+  total: number;
+  index: number;
+}
+
 interface DayDetailProps {
   date: Date;
   lunarInfo?: DayLunarInfo;
@@ -25,6 +36,35 @@ interface DayDetailProps {
 export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: DayDetailProps) {
   const MONTHS = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
+  const [history, setHistory] = useState<HistoryEvent | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [historyError, setHistoryError] = useState('');
+
+  const fetchHistory = useCallback(async (idx: number) => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const m = date.getMonth() + 1;
+      const d = date.getDate();
+      const res = await fetch(`/api/history?month=${m}&day=${d}&index=${idx}`);
+      const data = await res.json();
+      if (data.error) { setHistoryError(data.error); return; }
+      if (!data.event && data.total === 0) { setHistoryError('這一天暫無歷史資料'); return; }
+      setHistory(data);
+      setHistoryIndex(data.index);
+    } catch {
+      setHistoryError('無法取得資料，請稍後再試');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [date]);
+
+  const handleNextHistory = () => {
+    const nextIdx = history ? (history.index + 1) % history.total : 0;
+    fetchHistory(nextIdx);
+  };
+
   return (
     <div className={[
       'rounded-2xl p-5 border-2 transition-all',
@@ -34,7 +74,7 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
     ].join(' ')}>
       <div className="flex items-start justify-between">
         <div>
-          {/* Gregorian */}
+          {/* 國曆 */}
           <p className="text-sm text-gray-500">{date.getFullYear()} 年 {MONTHS[date.getMonth()]} {getDayName(date)}</p>
           <p className={[
             'text-5xl font-black mt-0.5',
@@ -43,7 +83,7 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
             {date.getDate()}
           </p>
 
-          {/* Lunar */}
+          {/* 農曆 */}
           {lunarInfo && (
             <div className="mt-2 space-y-0.5">
               <p className="text-base font-semibold text-gray-700">
@@ -57,7 +97,7 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
           )}
         </div>
 
-        {/* Vegetarian indicator */}
+        {/* 吃素日標示 */}
         {lunarInfo?.isVegetarianDay && (
           <div className="text-center">
             <div className="w-16 h-16 bg-amber-400 rounded-2xl flex items-center justify-center shadow-md">
@@ -70,7 +110,7 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
         )}
       </div>
 
-      {/* Vegetarian day message */}
+      {/* 吃素日訊息 */}
       {lunarInfo?.isVegetarianDay && (
         <div className="mt-4 p-3 bg-amber-100 rounded-xl">
           <p className="text-amber-800 text-sm font-medium">
@@ -79,7 +119,83 @@ export default function DayDetail({ date, lunarInfo, onFindFood, onRemind }: Day
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* 歷史上的今天 */}
+      <div className="mt-4">
+        {!history && !historyLoading && (
+          <button
+            onClick={() => fetchHistory(Math.floor(Math.random() * 30))}
+            className="w-full py-2.5 rounded-xl border border-dashed border-indigo-300 text-indigo-500 text-sm font-medium hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <span>📖</span>
+            <span>歷史上的今天</span>
+          </button>
+        )}
+
+        {historyLoading && (
+          <div className="w-full py-3 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
+            <p className="text-indigo-400 text-sm animate-pulse">查詢歷史資料中...</p>
+          </div>
+        )}
+
+        {historyError && !historyLoading && (
+          <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-400 text-center">
+            {historyError}
+          </div>
+        )}
+
+        {history && !historyLoading && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50 overflow-hidden">
+            {/* 標題列 */}
+            <div className="flex items-center justify-between px-4 py-2 bg-indigo-100">
+              <span className="text-xs font-bold text-indigo-600">📖 歷史上的今天</span>
+              <span className="text-xs text-indigo-400">{historyIndex + 1} / {history.total}</span>
+            </div>
+
+            <div className="p-4">
+              {/* 圖片 + 文字並排 */}
+              <div className="flex gap-3">
+                {history.imageUrl && (
+                  <div className="flex-shrink-0 relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
+                    <Image
+                      src={history.imageUrl}
+                      alt="歷史圖片"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-indigo-400 mb-1">{history.year} 年</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{history.text}</p>
+                </div>
+              </div>
+
+              {/* 操作列 */}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleNextHistory}
+                  className="flex-1 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-500 text-xs font-medium hover:bg-indigo-50 transition-colors"
+                >
+                  🔀 換一個
+                </button>
+                {history.wikiUrl && (
+                  <a
+                    href={history.wikiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-500 text-xs font-medium hover:bg-indigo-50 transition-colors text-center"
+                  >
+                    📚 詳細介紹
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 行動按鈕（吃素日才顯示） */}
       {lunarInfo?.isVegetarianDay && (
         <div className="flex gap-2 mt-4">
           <button

@@ -5,6 +5,17 @@ import { NextRequest, NextResponse } from 'next/server';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Solar } = require('lunar-javascript');
 
+// lunar-javascript 回傳簡體，手動對照繁體
+const ZODIAC_MAP: Record<string, string> = {
+  '鼠': '鼠', '牛': '牛', '虎': '虎', '兔': '兔',
+  '龙': '龍', '蛇': '蛇', '马': '馬', '羊': '羊',
+  '猴': '猴', '鸡': '雞', '狗': '狗', '猪': '豬',
+};
+
+function toTraditionalZodiac(raw: string): string {
+  return raw.split('').map(c => ZODIAC_MAP[c] ?? c).join('');
+}
+
 interface DayLunarInfo {
   date: string;         // YYYY-MM-DD
   lunarYear: number;
@@ -47,7 +58,7 @@ export async function GET(req: NextRequest) {
       lunarDayNum,
       isLeapMonth: isLeap,
       isVegetarianDay: lunarDayNum === 1 || lunarDayNum === 15,
-      zodiac: lunar.getYearShengXiao(),
+      zodiac: toTraditionalZodiac(lunar.getYearShengXiao()),
       jieQi: lunar.getJieQi() || '',
     });
   }
