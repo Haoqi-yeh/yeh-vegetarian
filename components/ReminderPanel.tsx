@@ -16,11 +16,14 @@ export default function ReminderPanel() {
   const [testSent, setTestSent] = useState(false);
   const [reminderTime, setReminderTime] = useState('08:00');
   const [savedTime, setSavedTime] = useState('');
+  const [reminderTiming, setReminderTiming] = useState<'day_of' | 'day_before' | 'both'>('both');
   const [activeSection, setActiveSection] = useState<'group' | 'personal' | 'push'>('group');
 
   useEffect(() => {
-    const saved = localStorage.getItem('vegetarian_reminder_time');
-    if (saved) { setReminderTime(saved); setSavedTime(saved); }
+    const savedT = localStorage.getItem('vegetarian_reminder_time');
+    if (savedT) { setReminderTime(savedT); setSavedTime(savedT); }
+    const savedTiming = localStorage.getItem('vegetarian_reminder_timing') as 'day_of' | 'day_before' | 'both' | null;
+    if (savedTiming) setReminderTiming(savedTiming);
   }, []);
 
   const checkLineStatus = useCallback(async () => {
@@ -112,8 +115,10 @@ export default function ReminderPanel() {
 
   const saveReminderTime = () => {
     localStorage.setItem('vegetarian_reminder_time', reminderTime);
+    localStorage.setItem('vegetarian_reminder_timing', reminderTiming);
     setSavedTime(reminderTime);
-    alert(`✓ 已儲存！每天 ${reminderTime} 在吃素日提醒`);
+    const timingLabel = reminderTiming === 'day_of' ? '當天' : reminderTiming === 'day_before' ? '前一天' : '當天 + 前一天';
+    alert(`✓ 已儲存！提醒時機：${timingLabel}，時間：${reminderTime}`);
   };
 
   return (
@@ -182,26 +187,73 @@ export default function ReminderPanel() {
           </div>
 
           {/* Reminder time */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-              <span className="text-xl">⏰</span> 提醒時間
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <span className="text-xl">⏰</span> 提醒設定
             </h3>
-            <div className="flex items-center gap-3">
-              <input
-                type="time"
-                value={reminderTime}
-                onChange={e => setReminderTime(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-gray-800 font-medium"
-              />
-              <button
-                onClick={saveReminderTime}
-                className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
-              >
-                儲存
-              </button>
-              {savedTime && <span className="text-sm text-gray-500">已設定：{savedTime}</span>}
+
+            {/* 提醒時機 */}
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-2">提醒時機</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'day_of' as const,     label: '當天提醒',     sub: '吃素日當天發',     icon: '🌅' },
+                  { value: 'day_before' as const, label: '前一天預告',   sub: '提前一天告知',     icon: '📅' },
+                  { value: 'both' as const,       label: '兩個都要',     sub: '預告 + 當天',      icon: '🔔' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setReminderTiming(opt.value)}
+                    className={[
+                      'rounded-xl border-2 p-3 text-center transition-all',
+                      reminderTiming === opt.value
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300',
+                    ].join(' ')}
+                  >
+                    <div className="text-xl mb-1">{opt.icon}</div>
+                    <div className={`text-xs font-bold ${reminderTiming === opt.value ? 'text-green-700' : 'text-gray-700'}`}>
+                      {opt.label}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">{opt.sub}</div>
+                  </button>
+                ))}
+              </div>
+              {reminderTiming === 'day_before' && (
+                <p className="text-xs text-blue-600 mt-2">
+                  💡 適合需要提前訂位或準備素食的人
+                </p>
+              )}
+              {reminderTiming === 'both' && (
+                <p className="text-xs text-green-600 mt-2">
+                  💡 前一天預告「明天吃素」，當天早上再提醒一次
+                </p>
+              )}
             </div>
-            <p className="text-xs text-gray-400 mt-2">* 只在農曆初一和十五當天發送</p>
+
+            {/* 提醒時間 */}
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-2">提醒時間</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="time"
+                  value={reminderTime}
+                  onChange={e => setReminderTime(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-gray-800 font-medium"
+                />
+                <button
+                  onClick={saveReminderTime}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                >
+                  儲存
+                </button>
+              </div>
+              {savedTime && (
+                <p className="text-xs text-gray-500 mt-1.5">
+                  已儲存：每天 {savedTime} 發送提醒
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
