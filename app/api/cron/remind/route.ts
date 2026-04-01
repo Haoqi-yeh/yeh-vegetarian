@@ -1,5 +1,5 @@
-// 排程提醒：每天早上由 Vercel Cron 自動呼叫
-// 根據 REMINDER_TIMING 設定，發「當天提醒」或「前一天預告」或兩者皆發
+// 排程提醒：每天早上 08:00（台灣時間）由 Vercel Cron 自動呼叫
+// 根據 REMINDER_TIMING 設定，廣播「當天提醒」或「前一天預告」或兩者
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Solar } = require('lunar-javascript');
 import { NextRequest, NextResponse } from 'next/server';
@@ -29,35 +29,7 @@ function getTomorrow(): Date {
   return d;
 }
 
-async function sendLineNotify(token: string, message: string) {
-  return fetch('https://notify-api.line.me/api/notify', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ message }),
-  });
-}
-
-function buildDayOfMessage(info: LunarInfo): string {
-  return (
-    `\n🌿 今天是農曆${info.lunarMonth}月${info.dayName}，記得吃素喔！\n\n` +
-    `素食不只是食物，是對神明的承諾 🙏\n\n` +
-    `開啟吃素日曆找附近素食：${process.env.NEXT_PUBLIC_BASE_URL || ''}`
-  );
-}
-
-function buildDayBeforeMessage(info: LunarInfo): string {
-  return (
-    `\n📅 提前通知：明天是農曆${info.lunarMonth}月${info.dayName}，記得明天吃素喔！\n\n` +
-    `提前安排好明天的素食餐廳，不用臨時手忙腳亂 🌱\n\n` +
-    `開啟吃素日曆找附近素食：${process.env.NEXT_PUBLIC_BASE_URL || ''}`
-  );
-}
-
 export async function GET(req: NextRequest) {
-  // 驗證只有 Vercel Cron 或有授權的人可以呼叫
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -70,17 +42,16 @@ export async function GET(req: NextRequest) {
   const today = getLunarInfo(new Date());
   const tomorrow = getLunarInfo(getTomorrow());
 
-  const messages: Array<{ type: string; message: string }> = [];
+  const toSend: Array<{ type: 'day_of' | 'day_before'; info: LunarInfo }> = [];
 
   if ((timing === 'day_of' || timing === 'both') && today.isVegetarian) {
-    messages.push({ type: 'day_of', message: buildDayOfMessage(today) });
+    toSend.push({ type: 'day_of', info: today });
   }
-
   if ((timing === 'day_before' || timing === 'both') && tomorrow.isVegetarian) {
-    messages.push({ type: 'day_before', message: buildDayBeforeMessage(tomorrow) });
+    toSend.push({ type: 'day_before', info: tomorrow });
   }
 
-  if (messages.length === 0) {
+  if (toSend.length === 0) {
     return NextResponse.json({
       sent: false,
       reason: `今天農曆${today.lunarMonth}月${today.lunarDay}，明天農曆${tomorrow.lunarMonth}月${tomorrow.lunarDay}，都不需要提醒`,
@@ -88,15 +59,22 @@ export async function GET(req: NextRequest) {
   }
 
   const results: string[] = [];
-  const adminToken = process.env.ADMIN_LINE_NOTIFY_TOKEN;
 
-  for (const { type, message } of messages) {
-    const label = type === 'day_of' ? '當天提醒' : '前一天預告';
-
-    if (adminToken) {
-      const res = await sendLineNotify(adminToken, message);
-      results.push(`LINE ${label}: ${res.ok ? '✓ 成功' : `✗ 失敗(${res.status})`}`);
+  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    const { broadcast, buildVegetarianMessage } = await import('../../../../lib/line-messaging');
+    for (const { type, info } of toSend) {
+      const label = type === 'day_of' ? '當天提醒' : '前一天預告';
+      try {
+        const message = buildVegetarianMessage(type, info.lunarMonth, info.dayName);
+        await broadcast([message]);
+        results.push(`LINE ${label}: ✓ 成功廣播`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results.push(`LINE ${label}: ✗ 失敗 - ${msg}`);
+      }
     }
+  } else {
+    results.push('LINE: 未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過');
   }
 
   return NextResponse.json({ sent: true, results });
