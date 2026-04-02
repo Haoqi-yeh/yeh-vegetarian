@@ -49,23 +49,23 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-green-700 text-white px-4 py-4 shadow-md">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-black tracking-wide">🌿 吃素日曆</h1>
-            <p className="text-green-200 text-xs mt-0.5">農曆初一、十五吃素提醒</p>
+      {/* Header + Tab navigation — 固定置頂 */}
+      <div className="sticky top-0 z-20 shadow-md">
+        <header className="bg-green-700 text-white px-4 py-4">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-black tracking-wide">🌿 吃素日曆</h1>
+              <p className="text-green-200 text-xs mt-0.5">農曆初一、十五吃素提醒</p>
+            </div>
+            <div className="text-right text-sm">
+              <p className="text-green-100 font-medium">
+                {today.getFullYear()}/{String(today.getMonth() + 1).padStart(2, '0')}/{String(today.getDate()).padStart(2, '0')}
+              </p>
+            </div>
           </div>
-          <div className="text-right text-sm">
-            <p className="text-green-100 font-medium">
-              {today.getFullYear()}/{String(today.getMonth() + 1).padStart(2, '0')}/{String(today.getDate()).padStart(2, '0')}
-            </p>
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Tab navigation */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+        <nav className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto flex">
           {TABS.map(tab => (
             <button
@@ -83,7 +83,8 @@ function HomeContent() {
             </button>
           ))}
         </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Content */}
       <main className="flex-1 px-4 py-5 overflow-auto">
