@@ -6,6 +6,7 @@ import Calendar from '@/components/Calendar';
 import DayDetail from '@/components/DayDetail';
 import MapSearch from '@/components/MapSearch';
 import ReminderPanel from '@/components/ReminderPanel';
+import Buddy from '@/components/Buddy';
 
 interface DayLunarInfo {
   date: string;
@@ -138,6 +139,9 @@ function HomeContent() {
       <footer className="bg-green-50 border-t border-green-100 py-3 px-4 text-center text-xs text-green-600">
         吃素迎吉祥・感恩神明護佑 🙏
       </footer>
+
+      {/* Buddy — virtual pet, summon by typing "buddy" */}
+      <Buddy />
     </div>
   );
 }
