@@ -44,7 +44,20 @@ export default function Buddy() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, mood]);
 
-  // Listen for the summon keyword typed anywhere (not in inputs)
+  const summon = useCallback(() => {
+    setVisible(true);
+    setMood('idle');
+    triggerBounce();
+  }, []);
+
+  // Summon via custom event (triggered by header tap sequence)
+  useEffect(() => {
+    const handleSummon = () => summon();
+    window.addEventListener('summon-buddy', handleSummon);
+    return () => window.removeEventListener('summon-buddy', handleSummon);
+  }, [summon]);
+
+  // Summon via keyboard: type "buddy" outside of inputs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -55,16 +68,14 @@ export default function Buddy() {
 
       typedRef.current = (typedRef.current + e.key).slice(-SUMMON_KEYWORD.length);
       if (typedRef.current.toLowerCase() === SUMMON_KEYWORD) {
-        setVisible(true);
-        setMood('idle');
-        triggerBounce();
+        summon();
         typedRef.current = '';
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [summon]);
 
   const setMoodTemporarily = (m: Mood, duration = 2500) => {
     if (moodTimerRef.current) clearTimeout(moodTimerRef.current);
@@ -131,7 +142,7 @@ export default function Buddy() {
       </div>
 
       {/* Re-summon hint */}
-      <p className="text-[10px] text-gray-400 mt-0.5">輸入「buddy」可再次召喚</p>
+      <p className="text-[10px] text-gray-400 mt-0.5">點 🌿 五下可再次召喚</p>
     </div>
   );
 }

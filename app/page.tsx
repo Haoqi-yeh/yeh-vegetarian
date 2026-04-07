@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense, useEffect } from 'react';
+import { useState, Suspense, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Calendar from '@/components/Calendar';
 import DayDetail from '@/components/DayDetail';
@@ -43,6 +43,20 @@ function HomeContent() {
     }
   }, [searchParams]);
 
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLogoTap = () => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      window.dispatchEvent(new CustomEvent('summon-buddy'));
+    } else {
+      tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 1500);
+    }
+  };
+
   const handleDaySelect = (date: Date, lunarInfo?: DayLunarInfo) => {
     setSelectedDate(date);
     setSelectedLunar(lunarInfo);
@@ -55,7 +69,7 @@ function HomeContent() {
         <header className="bg-green-700 text-white px-4 py-4">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-black tracking-wide">🌿 吃素日曆</h1>
+              <h1 className="text-xl font-black tracking-wide cursor-pointer" onClick={handleLogoTap}>🌿 吃素日曆</h1>
               <p className="text-green-200 text-xs mt-0.5">農曆初一、十五吃素提醒</p>
             </div>
             <div className="text-right text-sm">
